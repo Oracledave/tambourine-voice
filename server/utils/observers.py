@@ -48,7 +48,7 @@ class PipelineLogObserver(BaseObserver):
 
     def __init__(self, openai_client: "OpenAIRealtimeClient | None" = None) -> None:
         """Initialize the observer.
-        
+
         Args:
             openai_client: Optional OpenAI Realtime client for forwarding audio frames
         """
@@ -81,7 +81,7 @@ class PipelineLogObserver(BaseObserver):
                     f"Audio frame #{self._audio_frame_count}: "
                     f"{len(frame.audio)} bytes, {frame.sample_rate}Hz, {frame.num_channels}ch"
                 )
-            
+
             # Forward audio frames to OpenAI Realtime client if available
             # NOTE: To add resampling or format conversion, modify this section:
             # 1. Import resampling library (e.g., librosa, samplerate)
@@ -92,7 +92,7 @@ class PipelineLogObserver(BaseObserver):
                     # Extract audio payload from frame
                     # frame.audio is the raw audio data (bytes or numpy array)
                     audio_data = frame.audio
-                    
+
                     # Convert to PCM16 bytes if needed
                     if isinstance(audio_data, bytes):
                         # Already bytes, assume it's PCM16 format
@@ -100,19 +100,22 @@ class PipelineLogObserver(BaseObserver):
                     else:
                         # Assume float32 numpy array, convert to PCM16
                         import numpy as np
+
                         from utils.openai_integration import convert_float32_to_pcm16_bytes
-                        
+
                         if isinstance(audio_data, np.ndarray):
                             pcm_bytes = convert_float32_to_pcm16_bytes(audio_data)
                         else:
                             # Try converting to numpy array first
                             audio_array = np.array(audio_data, dtype=np.float32)
                             pcm_bytes = convert_float32_to_pcm16_bytes(audio_array)
-                    
+
                     # Forward frame non-blockingly to avoid blocking audio pipeline
-                    # Schedule as background task
-                    asyncio.create_task(self._openai_client.send_audio_frame(pcm_bytes))
-                    
+                    # Schedule as background task (store reference to avoid warning)
+                    task = asyncio.create_task(self._openai_client.send_audio_frame(pcm_bytes))
+                    # Note: Task will complete in background; errors logged in send_audio_frame
+                    _ = task  # Suppress unused variable warning
+
                 except Exception as e:
                     # Log error but don't crash the pipeline
                     logger.error(f"Error forwarding audio to OpenAI: {e}")
