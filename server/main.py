@@ -244,9 +244,16 @@ async def lifespan(fastapi_app: FastAPI):  # noqa: ANN201
     from utils.openai_integration import start_openai_client, transcripts_broadcast
 
     # Start OpenAI client in background (non-blocking)
-    _openai_task = asyncio.create_task(  # noqa: RUF006
-        start_openai_client(transcripts_broadcast)
-    )
+    # Log if startup fails, but don't block server startup
+    async def _start_openai_with_logging() -> None:
+        try:
+            client = await start_openai_client(transcripts_broadcast)
+            if not client:
+                logger.info("OpenAI Realtime integration not enabled (API key not configured)")
+        except Exception as e:
+            logger.error(f"Failed to start OpenAI Realtime client: {e}")
+
+    _openai_task = asyncio.create_task(_start_openai_with_logging())  # noqa: RUF006
 
     yield
     logger.info("Shutting down server...")

@@ -165,19 +165,9 @@ class PipelineLogObserver(BaseObserver):
             # Schedule the send as a non-blocking background task
             # This prevents blocking the audio pipeline
             # We don't need to track/await these tasks - they're fire-and-forget
-            try:
-                _ = asyncio.create_task(  # noqa: RUF006
-                    openai_client.send_audio_frame(pcm_bytes)
-                )
-            except RuntimeError:
-                # Fallback if no running loop - shouldn't happen in async context
-                try:
-                    loop = asyncio.get_running_loop()
-                    _ = loop.create_task(  # noqa: RUF006
-                        openai_client.send_audio_frame(pcm_bytes)
-                    )
-                except RuntimeError:
-                    logger.warning("No event loop running - cannot forward audio to OpenAI")
+            _ = asyncio.create_task(  # noqa: RUF006
+                openai_client.send_audio_frame(pcm_bytes)
+            )
 
         except Exception as e:
             # Log but don't raise - we don't want OpenAI issues to break the pipeline
