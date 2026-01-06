@@ -50,6 +50,7 @@ from services.providers import (
 )
 from utils.logger import configure_logging
 from utils.observers import PipelineLogObserver
+from utils.openai_integration import start_openai_client, transcripts_broadcast
 
 # ICE servers for WebRTC NAT traversal
 ICE_SERVERS: Final[list[IceServer]] = [
@@ -120,6 +121,46 @@ async def run_pipeline(
     transcription_to_llm = TranscriptionToLLMConverter()
     transcription_buffer = TranscriptionBufferProcessor()
 
+    # Initialize OpenAI Realtime client if API key is available
+    # This enables live audio streaming to OpenAI for real-time transcription
+    openai_client = None
+    try:
+        import os
+
+        if os.getenv("OPENAI_API_KEY"):
+            logger.info("Initializing OpenAI Realtime client...")
+
+            # Define message handler for OpenAI responses
+            def on_openai_message(message: dict[str, Any]) -> None:
+                """Handle messages from OpenAI Realtime API."""
+                msg_type = message.get("type", "unknown")
+
+                # Handle transcript events
+                if msg_type in ["conversation.item.input_audio_transcription.completed"]:
+                    # Extract transcript from message
+                    transcript = message.get("transcript", "")
+                    if transcript:
+                        transcripts_broadcast(
+                            {"type": msg_type, "text": transcript, "raw": message}
+                        )
+                elif msg_type == "response.audio_transcript.delta":
+                    # Incremental transcript
+                    delta = message.get("delta", "")
+                    if delta:
+                        logger.debug(f"OpenAI transcript delta: {delta}")
+                elif msg_type == "error":
+                    logger.error(f"OpenAI Realtime error: {message.get('error', message)}")
+                else:
+                    logger.debug(f"OpenAI message type: {msg_type}")
+
+            # Start OpenAI client with message handler
+            openai_client = await start_openai_client(on_message=on_openai_message)
+            logger.success("OpenAI Realtime client connected")
+
+    except Exception as e:
+        logger.warning(f"Failed to initialize OpenAI Realtime client: {e}")
+        logger.info("Continuing without OpenAI Realtime integration")
+
     # RTVIProcessor handles the RTVI protocol (client messages, server responses)
     rtvi_processor = RTVIProcessor()
 
@@ -183,7 +224,7 @@ async def run_pipeline(
         observers=[
             UserBotLatencyLogObserver(),
             RTVIObserver(rtvi_processor),  # Sends bot-llm-text messages to client
-            PipelineLogObserver(),
+            PipelineLogObserver(openai_client=openai_client),
         ],
     )
 
@@ -196,6 +237,13 @@ async def run_pipeline(
     async def on_client_disconnected(_transport: Any, client: Any) -> None:
         logger.info(f"Client disconnected: {client}")
         await task.cancel()
+
+        # Clean up OpenAI Realtime client
+        if openai_client:
+            try:
+                await openai_client.close()
+            except Exception as e:
+                logger.error(f"Error closing OpenAI client: {e}")
 
     # Run the pipeline
     runner = PipelineRunner(handle_sigint=False)
