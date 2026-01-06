@@ -170,9 +170,14 @@ class PipelineLogObserver(BaseObserver):
                     openai_client.send_audio_frame(pcm_bytes)
                 )
             except RuntimeError:
-                # Fallback if no event loop is running (shouldn't happen in practice)
-                loop = asyncio.get_event_loop()
-                _ = loop.create_task(openai_client.send_audio_frame(pcm_bytes))  # noqa: RUF006
+                # Fallback if no running loop - shouldn't happen in async context
+                try:
+                    loop = asyncio.get_running_loop()
+                    _ = loop.create_task(  # noqa: RUF006
+                        openai_client.send_audio_frame(pcm_bytes)
+                    )
+                except RuntimeError:
+                    logger.warning("No event loop running - cannot forward audio to OpenAI")
 
         except Exception as e:
             # Log but don't raise - we don't want OpenAI issues to break the pipeline

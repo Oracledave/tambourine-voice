@@ -85,7 +85,7 @@ def convert_float32_to_pcm16_bytes(float_array: np.ndarray) -> bytes:
     float_array = np.clip(float_array, -1.0, 1.0)
 
     # Scale to int16 range and convert
-    pcm16_array = (float_array * 32767.0).astype(np.int16)
+    pcm16_array = (float_array * 32767).astype(np.int16)
 
     # Convert to bytes (little-endian)
     return pcm16_array.tobytes()

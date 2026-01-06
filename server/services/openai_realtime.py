@@ -5,6 +5,7 @@ audio frames and receive transcription responses.
 """
 
 import asyncio
+import base64
 import contextlib
 import json
 from collections.abc import Callable
@@ -116,23 +117,8 @@ class OpenAIRealtimeClient:
     async def send_audio_frame(self, pcm16_bytes: bytes) -> None:
         """Send a PCM16 audio frame to OpenAI Realtime API.
 
-        Note: This implementation sends raw binary PCM16 frames by default.
-
-        TODO: The OpenAI Realtime API may require JSON-wrapped messages instead
-        of raw binary frames. If you see connection errors or missing transcripts:
-
-        1. Change this method to wrap audio in JSON format:
-           ```python
-           import base64
-           message = {
-               "type": "input_audio_buffer.append",
-               "audio": base64.b64encode(pcm16_bytes).decode('utf-8')
-           }
-           await self.websocket.send(json.dumps(message))
-           ```
-
-        2. You may also need to send an initial session configuration message
-           after connection, before sending audio frames.
+        Sends audio data wrapped in JSON format as required by OpenAI's Realtime API.
+        The audio is base64-encoded and sent in an input_audio_buffer.append message.
 
         Args:
             pcm16_bytes: Raw PCM16 audio data (16-bit little-endian samples)
@@ -144,9 +130,12 @@ class OpenAIRealtimeClient:
             raise RuntimeError("Not connected to OpenAI Realtime API")
 
         try:
-            # Send raw binary frame
-            # TODO: Change to JSON+base64 if required by API
-            await self.websocket.send(pcm16_bytes)
+            # Encode audio as base64 and wrap in JSON message
+            message = {
+                "type": "input_audio_buffer.append",
+                "audio": base64.b64encode(pcm16_bytes).decode("utf-8"),
+            }
+            await self.websocket.send(json.dumps(message))
 
         except Exception as e:
             logger.error(f"Failed to send audio frame: {e}")
