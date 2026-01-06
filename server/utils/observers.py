@@ -50,6 +50,7 @@ class PipelineLogObserver(BaseObserver):
         self._llm_accumulator: str = ""
         self._is_accumulating: bool = False
         self._audio_frame_count: int = 0
+        self._openai_forward_count: int = 0  # Track OpenAI forwarding separately
         # Track speaking state to deduplicate speech events from multiple sources
         self._is_speaking: bool = False
 
@@ -136,12 +137,15 @@ class PipelineLogObserver(BaseObserver):
             - The conversion assumes frame.audio is already int16 PCM from the transport
             - If frame format changes, update the conversion logic here
         """
+        # Increment forward counter for this method's logging
+        self._openai_forward_count += 1
+
         # Get the OpenAI client (may be None if not configured)
         openai_client = get_openai_client()
 
         if openai_client is None or not openai_client.is_connected:
             # Don't log every frame - only log periodically to avoid spam
-            if self._audio_frame_count % 1000 == 0:
+            if self._openai_forward_count % 1000 == 0:
                 logger.debug("OpenAI Realtime client not connected, skipping audio forwarding")
             return
 
@@ -157,7 +161,7 @@ class PipelineLogObserver(BaseObserver):
 
             # Log sample rate mismatch warning (OpenAI expects 24kHz by default)
             expected_rate = 24000
-            if frame.sample_rate != expected_rate and self._audio_frame_count % 1000 == 0:
+            if frame.sample_rate != expected_rate and self._openai_forward_count % 1000 == 0:
                 logger.warning(
                     f"Audio sample rate mismatch: frame={frame.sample_rate}Hz, "
                     f"OpenAI expects={expected_rate}Hz. Audio quality may be degraded. "

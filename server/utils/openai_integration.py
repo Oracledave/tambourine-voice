@@ -171,8 +171,9 @@ def transcripts_broadcast(transcript_obj: dict[str, Any]) -> None:
     for listener in _transcript_listeners:
         try:
             listener(transcript_obj)
-        except Exception as e:
-            logger.error(f"Error in transcript listener: {e}")
+        except Exception:
+            # Log full traceback to aid debugging but don't crash
+            logger.exception("Error in transcript listener callback")
 
 
 def register_transcript_listener(callback: Callable[[dict[str, Any]], None]) -> None:

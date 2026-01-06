@@ -154,10 +154,16 @@ class OpenAIRealtimeClient:
         logger.info("Closing OpenAI Realtime API connection")
         self._is_connected = False
 
-        # Cancel recv task
+        # Cancel recv task and wait for it to complete
         if self._recv_task and not self._recv_task.done():
             self._recv_task.cancel()
-            # Allow task cancellation without exception handling
+            try:
+                await self._recv_task
+            except asyncio.CancelledError:
+                # Expected when cancelling
+                pass
+            except Exception as e:
+                logger.warning(f"Error while cancelling recv task: {e}")
 
         # Close websocket
         if self._websocket:
