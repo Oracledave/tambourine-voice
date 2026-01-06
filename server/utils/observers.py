@@ -6,6 +6,7 @@ Filters frames by source to avoid duplicate logs as frames propagate through the
 import asyncio
 from typing import TYPE_CHECKING
 
+import numpy as np
 from pipecat.frames.frames import (
     InputAudioRawFrame,
     LLMFullResponseEndFrame,
@@ -27,6 +28,7 @@ from pipecat.transports.base_input import BaseInputTransport
 from pipecat.transports.base_output import BaseOutputTransport
 
 from utils.logger import logger
+from utils.openai_integration import convert_float32_to_pcm16_bytes
 
 if TYPE_CHECKING:
     from services.openai_realtime import OpenAIRealtimeClient
@@ -99,10 +101,6 @@ class PipelineLogObserver(BaseObserver):
                         pcm_bytes = audio_data
                     else:
                         # Assume float32 numpy array, convert to PCM16
-                        import numpy as np
-
-                        from utils.openai_integration import convert_float32_to_pcm16_bytes
-
                         if isinstance(audio_data, np.ndarray):
                             pcm_bytes = convert_float32_to_pcm16_bytes(audio_data)
                         else:
