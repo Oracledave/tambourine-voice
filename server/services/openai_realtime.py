@@ -21,9 +21,9 @@ To switch models or formats:
 """
 
 import asyncio
-import base64
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import websockets
 from loguru import logger
@@ -157,10 +157,7 @@ class OpenAIRealtimeClient:
         # Cancel recv task
         if self._recv_task and not self._recv_task.done():
             self._recv_task.cancel()
-            try:
-                await self._recv_task
-            except asyncio.CancelledError:
-                pass
+            # Allow task cancellation without exception handling
 
         # Close websocket
         if self._websocket:

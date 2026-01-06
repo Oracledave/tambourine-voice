@@ -8,9 +8,9 @@ with the Tambourine server pipeline. It includes:
 - In-memory transcript history for debugging and display
 """
 
-import asyncio
 from collections import deque
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -120,9 +120,7 @@ def _default_message_handler(message: dict[str, Any]) -> None:
                     transcript = part.get("transcript", "")
                     if transcript:
                         logger.info(f"OpenAI Realtime final transcript: '{transcript}'")
-                        transcripts_broadcast(
-                            {"type": "final", "text": transcript, "raw": message}
-                        )
+                        transcripts_broadcast({"type": "final", "text": transcript, "raw": message})
 
     elif msg_type == "response.audio_transcript.delta":
         # Delta updates for audio transcription

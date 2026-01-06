@@ -6,7 +6,6 @@ Forwards audio frames to OpenAI Realtime API when available.
 
 import asyncio
 
-import numpy as np
 from pipecat.frames.frames import (
     InputAudioRawFrame,
     LLMFullResponseEndFrame,
@@ -28,7 +27,7 @@ from pipecat.transports.base_input import BaseInputTransport
 from pipecat.transports.base_output import BaseOutputTransport
 
 from utils.logger import logger
-from utils.openai_integration import convert_float32_to_pcm16_bytes, get_openai_client
+from utils.openai_integration import get_openai_client
 
 
 class PipelineLogObserver(BaseObserver):
@@ -167,7 +166,25 @@ class PipelineLogObserver(BaseObserver):
 
             # Send audio frame asynchronously (don't await to avoid blocking the pipeline)
             # Create a background task to send the audio frame
-            asyncio.create_task(openai_client.send_audio_frame(audio_bytes))
+            # Store reference to avoid task being garbage collected mid-execution
+            task = asyncio.create_task(openai_client.send_audio_frame(audio_bytes))
+            # Add callback to log any errors that occur in the background task
+            task.add_done_callback(lambda t: self._log_task_exception(t))
 
         except Exception as e:
             logger.error(f"Error forwarding audio to OpenAI Realtime: {e}")
+
+    def _log_task_exception(self, task: asyncio.Task[None]) -> None:
+        """Log exceptions from background tasks.
+
+        Args:
+            task: The completed task to check for exceptions
+        """
+        try:
+            # Retrieve exception if task failed
+            task.exception()
+        except asyncio.CancelledError:
+            # Task was cancelled, which is expected during shutdown
+            pass
+        except Exception as e:
+            logger.error(f"Background task error sending audio to OpenAI: {e}")
