@@ -245,6 +245,22 @@ pnpm build         # Build for current platform
 
 Copy `.env.example` to `.env` and add API keys for at least one STT and one LLM provider. See the example file for all supported providers including Deepgram, Cartesia, OpenAI, Anthropic, Cerebras, Groq, AWS, and more. Additional [Pipecat-supported providers](https://docs.pipecat.ai/server/services/supported-services) can be added easily.
 
+#### OpenAI Realtime API Integration (Optional)
+
+The server includes optional support for OpenAI's Realtime API for live audio transcription streaming. When enabled, audio frames are forwarded to OpenAI in real-time and transcripts are logged.
+
+**Configuration:**
+- Set `OPENAI_API_KEY` in your `.env` file (same key used for OpenAI LLM)
+- Optional: `OPENAI_REALTIME_MODEL` (default: `gpt-4o-realtime-preview`)
+- Optional: `OPENAI_REALTIME_URL` (default: `wss://api.openai.com/v1/realtime`)
+
+**Limitations:**
+- Transcripts are currently logged only (not integrated into the main transcription pipeline)
+- No automatic resampling - audio is sent at the input sample rate
+- This is an experimental feature for testing OpenAI's Realtime API
+
+To disable, simply omit `OPENAI_API_KEY` or leave it unset.
+
 ### App Configuration
 
 The app connects to `localhost:8765` by default via WebRTC. Settings are persisted locally and include:

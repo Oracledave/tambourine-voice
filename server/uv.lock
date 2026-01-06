@@ -2320,11 +2320,13 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "loguru" },
+    { name = "numpy" },
     { name = "pipecat-ai", extra = ["anthropic", "assemblyai", "aws", "azure", "cartesia", "deepgram", "google", "groq", "openai", "silero", "speechmatics", "webrtc", "whisper"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "typer" },
     { name = "uvicorn" },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -2339,11 +2341,13 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "loguru", specifier = ">=0.7.3" },
+    { name = "numpy", specifier = ">=1.26.0" },
     { name = "pipecat-ai", extras = ["anthropic", "speechmatics", "assemblyai", "aws", "azure", "cartesia", "cerebras", "deepgram", "google", "groq", "openai", "openrouter", "silero", "webrtc", "whisper"], specifier = ">=0.0.98" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "typer", specifier = ">=0.21.0" },
     { name = "uvicorn", specifier = ">=0.40.0" },
+    { name = "websockets", specifier = ">=14.0" },
 ]
 
 [package.metadata.requires-dev]

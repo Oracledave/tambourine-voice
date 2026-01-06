@@ -3,6 +3,9 @@
 Filters frames by source to avoid duplicate logs as frames propagate through the pipeline.
 """
 
+import asyncio
+
+import numpy as np
 from pipecat.frames.frames import (
     InputAudioRawFrame,
     LLMFullResponseEndFrame,
@@ -24,6 +27,7 @@ from pipecat.transports.base_input import BaseInputTransport
 from pipecat.transports.base_output import BaseOutputTransport
 
 from utils.logger import logger
+from utils.openai_integration import convert_float32_to_pcm16_bytes, get_openai_client
 
 
 class PipelineLogObserver(BaseObserver):
@@ -63,6 +67,7 @@ class PipelineLogObserver(BaseObserver):
             logger.success("Pipeline started")
 
         # Log audio frames from input transport (first few and periodic)
+        # Also forward to OpenAI Realtime API if available
         elif isinstance(frame, InputAudioRawFrame) and isinstance(src, BaseInputTransport):
             self._audio_frame_count += 1
             if self._audio_frame_count % 500 == 0:
@@ -70,6 +75,13 @@ class PipelineLogObserver(BaseObserver):
                     f"Audio frame #{self._audio_frame_count}: "
                     f"{len(frame.audio)} bytes, {frame.sample_rate}Hz, {frame.num_channels}ch"
                 )
+
+            # Forward audio frame to OpenAI Realtime API (non-blocking)
+            # NOTE: This does not include resampling - if the input sample rate
+            # differs from OpenAI's expected rate (typically 24kHz or 16kHz),
+            # recognition quality may be affected. Add resampling here in a
+            # future update if needed.
+            await self._forward_audio_to_openai(frame)
 
         # Log transcription from STT service
         elif isinstance(frame, TranscriptionFrame) and isinstance(src, STTService):
@@ -110,3 +122,53 @@ class PipelineLogObserver(BaseObserver):
         # Log other frames at debug level (skip noisy ones)
         elif not isinstance(frame, (UserSpeakingFrame, MetricsFrame, TextFrame, LLMTextFrame)):
             logger.debug(f"Frame: {type(frame).__name__}")
+
+    async def _forward_audio_to_openai(self, frame: InputAudioRawFrame) -> None:
+        """Forward audio frame to OpenAI Realtime API (non-blocking).
+
+        Extracts audio payload from the frame and forwards it to OpenAI.
+        Handles both bytes/bytearray (assumed PCM16) and numeric arrays
+        (assumed float32 in range [-1, 1]).
+
+        Args:
+            frame: InputAudioRawFrame containing audio data
+        """
+        openai_client = get_openai_client()
+        if not openai_client:
+            # Client not initialized - this is normal if OPENAI_API_KEY not set
+            return
+
+        try:
+            # Extract audio payload from frame
+            # The frame.audio attribute contains the raw audio data
+            audio_data = frame.audio
+
+            # Determine if we need to convert the audio format
+            if isinstance(audio_data, (bytes, bytearray)):
+                # Already bytes - assume PCM16 format, forward as-is
+                pcm_bytes = bytes(audio_data)
+            elif isinstance(audio_data, (list, tuple)):
+                # Numeric list/tuple - convert to numpy array then to PCM16
+                float_array = np.array(audio_data, dtype=np.float32)
+                pcm_bytes = convert_float32_to_pcm16_bytes(float_array)
+            elif hasattr(audio_data, "__array__"):
+                # NumPy array or array-like - assume float32 samples
+                float_array = np.asarray(audio_data, dtype=np.float32)
+                pcm_bytes = convert_float32_to_pcm16_bytes(float_array)
+            else:
+                logger.warning(
+                    f"Unknown audio data type: {type(audio_data)}. "
+                    f"Cannot forward to OpenAI Realtime."
+                )
+                return
+
+            # Schedule the send as a non-blocking background task
+            # This prevents blocking the audio pipeline
+            # We don't need to track/await these tasks - they're fire-and-forget
+            _ = asyncio.create_task(  # noqa: RUF006
+                openai_client.send_audio_frame(pcm_bytes)
+            )
+
+        except Exception as e:
+            # Log but don't raise - we don't want OpenAI issues to break the pipeline
+            logger.error(f"Failed to forward audio to OpenAI Realtime: {e}")
