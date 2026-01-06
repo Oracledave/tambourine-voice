@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     openai_base_url: str | None = Field(
         None, description="OpenAI base URL (optional, for OpenAI-compatible endpoints)"
     )
+    
+    # OpenAI Realtime API (optional, for voice-to-text streaming)
+    openai_realtime_model: str = Field(
+        "gpt-4o-realtime-preview-2024-12-17",
+        description="OpenAI Realtime model for streaming transcription",
+    )
+    openai_realtime_url: str = Field(
+        "wss://api.openai.com/v1/realtime",
+        description="OpenAI Realtime WebSocket URL",
+    )
     google_api_key: str | None = Field(None, description="Google API key for Gemini LLM")
     anthropic_api_key: str | None = Field(None, description="Anthropic API key for LLM")
     cerebras_api_key: str | None = Field(None, description="Cerebras API key for LLM")

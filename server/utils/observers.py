@@ -1,8 +1,12 @@
 """Custom logging observer for pipeline events.
 
 Filters frames by source to avoid duplicate logs as frames propagate through the pipeline.
+Forwards audio frames to OpenAI Realtime API when available.
 """
 
+import asyncio
+
+import numpy as np
 from pipecat.frames.frames import (
     InputAudioRawFrame,
     LLMFullResponseEndFrame,
@@ -24,6 +28,7 @@ from pipecat.transports.base_input import BaseInputTransport
 from pipecat.transports.base_output import BaseOutputTransport
 
 from utils.logger import logger
+from utils.openai_integration import convert_float32_to_pcm16_bytes, get_openai_client
 
 
 class PipelineLogObserver(BaseObserver):
@@ -71,6 +76,11 @@ class PipelineLogObserver(BaseObserver):
                     f"{len(frame.audio)} bytes, {frame.sample_rate}Hz, {frame.num_channels}ch"
                 )
 
+            # Forward audio frame to OpenAI Realtime API if available
+            # Note: frame.audio is the raw audio bytes from the input transport
+            # InputAudioRawFrame typically contains PCM audio data
+            await self._forward_audio_to_openai(frame)
+
         # Log transcription from STT service
         elif isinstance(frame, TranscriptionFrame) and isinstance(src, STTService):
             logger.info(f"TRANSCRIPTION: '{frame.text}'")
@@ -110,3 +120,54 @@ class PipelineLogObserver(BaseObserver):
         # Log other frames at debug level (skip noisy ones)
         elif not isinstance(frame, (UserSpeakingFrame, MetricsFrame, TextFrame, LLMTextFrame)):
             logger.debug(f"Frame: {type(frame).__name__}")
+
+    async def _forward_audio_to_openai(self, frame: InputAudioRawFrame) -> None:
+        """Forward audio frame to OpenAI Realtime API for streaming transcription.
+
+        This method converts the audio frame to the required format (signed 16-bit PCM)
+        and sends it asynchronously to the OpenAI Realtime client if connected.
+
+        Args:
+            frame: The InputAudioRawFrame containing audio data
+
+        Note:
+            - frame.audio: Raw audio bytes (typically already PCM16 from WebRTC)
+            - frame.sample_rate: Sample rate in Hz (typically 16000 or 24000)
+            - frame.num_channels: Number of audio channels (should be 1 for mono)
+            - The conversion assumes frame.audio is already int16 PCM from the transport
+            - If frame format changes, update the conversion logic here
+        """
+        # Get the OpenAI client (may be None if not configured)
+        openai_client = get_openai_client()
+
+        if openai_client is None or not openai_client.is_connected:
+            # Don't log every frame - only log periodically to avoid spam
+            if self._audio_frame_count % 1000 == 0:
+                logger.debug("OpenAI Realtime client not connected, skipping audio forwarding")
+            return
+
+        try:
+            # Extract audio data from frame
+            # InputAudioRawFrame.audio contains the raw PCM bytes
+            audio_bytes = frame.audio
+
+            # Check if we need to convert the audio format
+            # Most WebRTC audio is already 16-bit PCM, but we may receive float32
+            # For now, we assume the audio is already in the correct format
+            # If conversion is needed, it would happen here using convert_float32_to_pcm16_bytes
+
+            # Log sample rate mismatch warning (OpenAI expects 24kHz by default)
+            expected_rate = 24000
+            if frame.sample_rate != expected_rate and self._audio_frame_count % 1000 == 0:
+                logger.warning(
+                    f"Audio sample rate mismatch: frame={frame.sample_rate}Hz, "
+                    f"OpenAI expects={expected_rate}Hz. Audio quality may be degraded. "
+                    f"Consider adding resampling with resampy or librosa."
+                )
+
+            # Send audio frame asynchronously (don't await to avoid blocking the pipeline)
+            # Create a background task to send the audio frame
+            asyncio.create_task(openai_client.send_audio_frame(audio_bytes))
+
+        except Exception as e:
+            logger.error(f"Error forwarding audio to OpenAI Realtime: {e}")

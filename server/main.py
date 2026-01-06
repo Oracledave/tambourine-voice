@@ -238,12 +238,37 @@ def initialize_services(settings: Settings) -> AppServices | None:
 
 @asynccontextmanager
 async def lifespan(fastapi_app: FastAPI):  # noqa: ANN201
-    """FastAPI lifespan context manager for cleanup."""
+    """FastAPI lifespan context manager for startup and cleanup."""
+    # Startup: Initialize OpenAI Realtime client if API key is available
+    services: AppServices | None = getattr(fastapi_app.state, "services", None)
+    if services and services.settings.openai_api_key:
+        logger.info("Initializing OpenAI Realtime client...")
+        try:
+            from utils.openai_integration import start_openai_client
+
+            await start_openai_client(
+                api_key=services.settings.openai_api_key,
+                model=services.settings.openai_realtime_model,
+                base_url=services.settings.openai_realtime_url,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to initialize OpenAI Realtime client: {e}")
+            logger.warning("Continuing without OpenAI Realtime integration")
+
     yield
+
     logger.info("Shutting down server...")
 
+    # Shutdown: Clean up OpenAI Realtime client
+    try:
+        from utils.openai_integration import stop_openai_client
+
+        await stop_openai_client()
+    except Exception as e:
+        logger.warning(f"Error stopping OpenAI Realtime client: {e}")
+
     # Get services from app state (may not exist if startup failed)
-    services: AppServices | None = getattr(fastapi_app.state, "services", None)
+    services = getattr(fastapi_app.state, "services", None)
     if services is None:
         logger.warning("Services not initialized, skipping cleanup")
         return
