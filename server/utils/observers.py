@@ -75,7 +75,7 @@ class PipelineLogObserver(BaseObserver):
                     f"Audio frame #{self._audio_frame_count}: "
                     f"{len(frame.audio)} bytes, {frame.sample_rate}Hz, {frame.num_channels}ch"
                 )
-            
+
             # Forward audio frame to OpenAI Realtime API (non-blocking)
             # NOTE: This does not include resampling - if the input sample rate
             # differs from OpenAI's expected rate (typically 24kHz or 16kHz),
@@ -125,11 +125,11 @@ class PipelineLogObserver(BaseObserver):
 
     async def _forward_audio_to_openai(self, frame: InputAudioRawFrame) -> None:
         """Forward audio frame to OpenAI Realtime API (non-blocking).
-        
+
         Extracts audio payload from the frame and forwards it to OpenAI.
         Handles both bytes/bytearray (assumed PCM16) and numeric arrays
         (assumed float32 in range [-1, 1]).
-        
+
         Args:
             frame: InputAudioRawFrame containing audio data
         """
@@ -137,12 +137,12 @@ class PipelineLogObserver(BaseObserver):
         if not openai_client:
             # Client not initialized - this is normal if OPENAI_API_KEY not set
             return
-        
+
         try:
             # Extract audio payload from frame
             # The frame.audio attribute contains the raw audio data
             audio_data = frame.audio
-            
+
             # Determine if we need to convert the audio format
             if isinstance(audio_data, (bytes, bytearray)):
                 # Already bytes - assume PCM16 format, forward as-is
@@ -151,7 +151,7 @@ class PipelineLogObserver(BaseObserver):
                 # Numeric list/tuple - convert to numpy array then to PCM16
                 float_array = np.array(audio_data, dtype=np.float32)
                 pcm_bytes = convert_float32_to_pcm16_bytes(float_array)
-            elif hasattr(audio_data, '__array__'):
+            elif hasattr(audio_data, "__array__"):
                 # NumPy array or array-like - assume float32 samples
                 float_array = np.asarray(audio_data, dtype=np.float32)
                 pcm_bytes = convert_float32_to_pcm16_bytes(float_array)
@@ -161,16 +161,19 @@ class PipelineLogObserver(BaseObserver):
                     f"Cannot forward to OpenAI Realtime."
                 )
                 return
-            
+
             # Schedule the send as a non-blocking background task
             # This prevents blocking the audio pipeline
+            # We don't need to track/await these tasks - they're fire-and-forget
             try:
-                asyncio.create_task(openai_client.send_audio_frame(pcm_bytes))
+                _ = asyncio.create_task(  # noqa: RUF006
+                    openai_client.send_audio_frame(pcm_bytes)
+                )
             except RuntimeError:
                 # Fallback if no event loop is running (shouldn't happen in practice)
                 loop = asyncio.get_event_loop()
-                loop.create_task(openai_client.send_audio_frame(pcm_bytes))
-                
+                _ = loop.create_task(openai_client.send_audio_frame(pcm_bytes))  # noqa: RUF006
+
         except Exception as e:
             # Log but don't raise - we don't want OpenAI issues to break the pipeline
             logger.error(f"Failed to forward audio to OpenAI Realtime: {e}")

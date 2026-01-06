@@ -242,10 +242,12 @@ async def lifespan(fastapi_app: FastAPI):  # noqa: ANN201
     # Startup: Initialize OpenAI Realtime client if API key is configured
     # This is optional - the integration will be disabled if OPENAI_API_KEY is not set
     from utils.openai_integration import start_openai_client, transcripts_broadcast
-    
+
     # Start OpenAI client in background (non-blocking)
-    asyncio.create_task(start_openai_client(transcripts_broadcast))
-    
+    _openai_task = asyncio.create_task(  # noqa: RUF006
+        start_openai_client(transcripts_broadcast)
+    )
+
     yield
     logger.info("Shutting down server...")
 
@@ -271,10 +273,10 @@ async def lifespan(fastapi_app: FastAPI):  # noqa: ANN201
     # SmallWebRTCRequestHandler manages all connections - close them cleanly
     await services.webrtc_handler.close()
     logger.success("All connections cleaned up")
-    
+
     # Cleanup OpenAI Realtime client
     from utils.openai_integration import get_openai_client
-    
+
     openai_client = get_openai_client()
     if openai_client:
         await openai_client.close()
